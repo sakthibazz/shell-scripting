@@ -83,7 +83,7 @@ aws s3 cp ./example_file.txt "s3://$BUCKET_NAME/example_file.txt"
 # Create a Zip file to upload Lambda Function
 zip -r s3-lambda-function.zip ./s3-lambda-function
 
-sleep 5
+sleep 20
 # Create a Lambda function
 aws lambda create-function \
   --region "$AWS_REGION" \
