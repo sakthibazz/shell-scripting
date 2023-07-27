@@ -10,7 +10,6 @@ echo "AWS Account ID: $aws_account_id"
 
 # Set AWS region and bucket name
 AWS_REGION="us-east-1"
-bucket_name="sakthibazz-devops"
 lambda_func_name="s3-lambda-function"
 role_name="s3-lambda-sns"
 email_address="sakthibazz@gmail.com"
