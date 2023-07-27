@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -xeo
+set -x
 
 # Function to create an SNS topic
 create_sns_topic() {
