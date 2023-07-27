@@ -73,13 +73,12 @@ for ((i=1; i<=1000; i++)); do
     echo "Bucket '$BUCKET_NAME' already exists."
   fi
 done
-bucket_name="$BUCKET_NAME"
 
 # Print the output from the variable
-echo "Bucket creation output: $bucket_output"
+echo "Bucket creation output: $BUCKET_NAME"
 
 # Upload a file to the bucket
-aws s3 cp ./example_file.txt "s3://$bucket_name/example_file.txt"
+aws s3 cp ./example_file.txt "s3://$BUCKET_NAME/example_file.txt"
 
 # Create a Zip file to upload Lambda Function
 zip -r s3-lambda-function.zip ./s3-lambda-function
@@ -102,13 +101,13 @@ aws lambda add-permission \
   --statement-id "s3-lambda-sns" \
   --action "lambda:InvokeFunction" \
   --principal s3.amazonaws.com \
-  --source-arn "arn:aws:s3:::$bucket_name"
+  --source-arn "arn:aws:s3:::$BUCKET_NAME"
 
 # Create an S3 event trigger for the Lambda function
 LambdaFunctionArn="arn:aws:lambda:$AWS_REGION:$aws_account_id:function:$lambda_func_name"
 aws s3api put-bucket-notification-configuration \
   --region "$AWS_REGION" \
-  --bucket "$bucket_name" \
+  --bucket "$BUCKET_NAME" \
   --notification-configuration '{
     "LambdaFunctionConfigurations": [{
         "LambdaFunctionArn": "'"$LambdaFunctionArn"'",
