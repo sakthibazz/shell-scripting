@@ -15,20 +15,25 @@ role_name="s3-lambda-sns"
 email_address="sakthibazz@gmail.com"
 
 # Create IAM Role for the project
-role_response=$(aws iam create-role --role-name s3-lambda-sns --assume-role-policy-document '{
-  "Version": "2012-10-17",
-  "Statement": [{
-    "Action": "sts:AssumeRole",
-    "Effect": "Allow",
-    "Principal": {
-      "Service": [
-         "lambda.amazonaws.com",
-         "s3.amazonaws.com",
-         "sns.amazonaws.com"
-      ]
-    }
-  }]
-}')
+aws iam get-role --role-name "$role_name" 2>/dev/null
+if [ $? eq 0 ]; then
+  aws iam delete-role --role-name $role_name
+else
+  role_response=$(aws iam create-role --role-name s3-lambda-sns --assume-role-policy-document '{
+    "Version": "2012-10-17",
+    "Statement": [{
+      "Action": "sts:AssumeRole",
+      "Effect": "Allow",
+      "Principal": {
+        "Service": [
+          "lambda.amazonaws.com",
+          "s3.amazonaws.com",
+          "sns.amazonaws.com"
+        ]
+      }
+    }]
+  }')
+  fi
 
 # Extract the role ARN from the JSON response and store it in a variable
 role_arn=$(echo "$role_response" | jq -r '.Role.Arn')
