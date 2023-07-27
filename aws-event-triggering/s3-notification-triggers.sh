@@ -10,10 +10,10 @@ echo "AWS Account ID: $aws_account_id"
 
 # Set AWS region and bucket name
 aws_region="us-east-1"
-bucket_name="abhishek-ultimate-bucket"
+bucket_name="sakthibazz-devops"
 lambda_func_name="s3-lambda-function"
 role_name="s3-lambda-sns"
-email_address="zyz@gmail.com"
+email_address="sakthibazz@gmail.com"
 
 # Create IAM Role for the project
 role_response=$(aws iam create-role --role-name s3-lambda-sns --assume-role-policy-document '{
@@ -53,7 +53,7 @@ aws s3 cp ./example_file.txt s3://"$bucket_name"/example_file.txt
 # Create a Zip file to upload Lambda Function
 zip -r s3-lambda-function.zip ./s3-lambda-function
 
-sleep 5
+sleep 2
 # Create a Lambda function
 aws lambda create-function \
   --region "$aws_region" \
