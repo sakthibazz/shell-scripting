@@ -1,6 +1,12 @@
 #!/bin/bash
 
-set -x
+set -xeo
+
+# Function to create an SNS topic
+create_sns_topic() {
+  local topic_name=$1
+  aws sns create-topic --name "$topic_name" --output json | jq -r '.TopicArn'
+}
 
 # Store the AWS account ID in a variable
 aws_account_id=$(aws sts get-caller-identity --query 'Account' --output text)
@@ -24,7 +30,6 @@ if aws iam get-role --role-name "$role_name" 2>/dev/null; then
   # Delete the IAM role
   aws iam delete-role --role-name "$role_name"
 fi
-
 
 # Creating the IAM role
 role_response=$(aws iam create-role --role-name "$role_name" --assume-role-policy-document '{
@@ -83,40 +88,20 @@ aws s3 cp ./example_file.txt "s3://$BUCKET_NAME/example_file.txt"
 # Create a Zip file to upload Lambda Function
 zip -r s3-lambda-function.zip ./s3-lambda-function
 
-sleep 20
-# Create a Lambda function
-aws lambda create-function \
-  --region "$AWS_REGION" \
-  --function-name "$lambda_func_name" \
-  --runtime "python3.8" \
-  --handler "s3-lambda-function/s3-lambda-function.lambda_handler" \
-  --memory-size 128 \
-  --timeout 30 \
-  --role "arn:aws:iam::$aws_account_id:role/$role_name" \
-  --zip-file "fileb://./s3-lambda-function.zip"
+# Wait for IAM role to propagate
+echo "Waiting for IAM role to propagate..."
+sleep 10
 
-# Add Permissions to S3 Bucket to invoke Lambda
-aws lambda add-permission \
-  --function-name "$lambda_func_name" \
-  --statement-id "s3-lambda-sns" \
-  --action "lambda:InvokeFunction" \
-  --principal s3.amazonaws.com \
-  --source-arn "arn:aws:s3:::$BUCKET_NAME"
+# Check if SNS topic already exists
+existing_topic_arn=$(aws sns list-topics --output json | jq -r '.Topics[] | select(.TopicArn | contains(":s3-lambda-sns")) | .TopicArn')
 
-# Create an S3 event trigger for the Lambda function
-LambdaFunctionArn="arn:aws:lambda:$AWS_REGION:$aws_account_id:function:$lambda_func_name"
-aws s3api put-bucket-notification-configuration \
-  --region "$AWS_REGION" \
-  --bucket "$BUCKET_NAME" \
-  --notification-configuration '{
-    "LambdaFunctionConfigurations": [{
-        "LambdaFunctionArn": "'"$LambdaFunctionArn"'",
-        "Events": ["s3:ObjectCreated:*"]
-    }]
-}'
+if [ -n "$existing_topic_arn" ]; then
+  echo "SNS topic already exists. Deleting it..."
+  aws sns delete-topic --topic-arn "$existing_topic_arn" || { echo "Failed to delete existing SNS topic."; exit 1; }
+fi
 
-# Create an SNS topic and save the topic ARN to a variable
-topic_arn=$(aws sns create-topic --name s3-lambda-sns --output json | jq -r '.TopicArn')
+# Create a new SNS topic
+topic_arn=$(create_sns_topic "s3-lambda-sns")
 
 # Print the TopicArn
 echo "SNS Topic ARN: $topic_arn"
@@ -133,10 +118,41 @@ aws lambda add-permission \
 aws sns subscribe \
   --topic-arn "$topic_arn" \
   --protocol "lambda" \
-  --notification-endpoint "$LambdaFunctionArn"
+  --notification-endpoint "arn:aws:lambda:$AWS_REGION:$aws_account_id:function:$lambda_func_name"
 
 # Publish to the SNS topic
 aws sns publish \
   --topic-arn "$topic_arn" \
   --subject "A new object created in S3 bucket" \
   --message "Hello from Abhishek.Veeramalla YouTube channel, Learn DevOps Zero to Hero for Free"
+
+# Create a Lambda function
+aws lambda create-function \
+  --region "$AWS_REGION" \
+  --function-name "$lambda_func_name" \
+  --runtime "python3.8" \
+  --handler "s3-lambda-function/s3-lambda-function.lambda_handler" \
+  --memory-size 128 \
+  --timeout 30 \
+  --role "arn:aws:iam::$aws_account_id:role/$role_name" \
+  --zip-file "fileb://./s3-lambda-function.zip"
+
+# Add Permissions to S3 Bucket to invoke Lambda
+LambdaFunctionArn="arn:aws:lambda:$AWS_REGION:$aws_account_id:function:$lambda_func_name"
+aws lambda add-permission \
+  --function-name "$lambda_func_name" \
+  --statement-id "s3-lambda-sns" \
+  --action "lambda:InvokeFunction" \
+  --principal s3.amazonaws.com \
+  --source-arn "arn:aws:s3:::$BUCKET_NAME"
+
+# Create an S3 event trigger for the Lambda function
+aws s3api put-bucket-notification-configuration \
+  --region "$AWS_REGION" \
+  --bucket "$BUCKET_NAME" \
+  --notification-configuration '{
+    "LambdaFunctionConfigurations": [{
+        "LambdaFunctionArn": "'"$LambdaFunctionArn"'",
+        "Events": ["s3:ObjectCreated:*"]
+    }]
+}'
