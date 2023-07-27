@@ -16,9 +16,15 @@ email_address="sakthibazz@gmail.com"
 
 # Checking if the IAM role already exists
 if aws iam get-role --role-name "$role_name" 2>/dev/null; then
-  # Deleting the IAM role if it exists
+  # Detach policies from the IAM role
+  aws iam list-attached-role-policies --role-name "$role_name" | jq -r '.AttachedPolicies | .[].PolicyArn' | while read policy_arn; do
+    aws iam detach-role-policy --role-name "$role_name" --policy-arn "$policy_arn"
+  done
+
+  # Delete the IAM role
   aws iam delete-role --role-name "$role_name"
 fi
+
 
 # Creating the IAM role
 role_response=$(aws iam create-role --role-name "$role_name" --assume-role-policy-document '{
