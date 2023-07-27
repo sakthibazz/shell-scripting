@@ -50,7 +50,7 @@ for ((i=1; i<=1000; i++)); do
 
   if [ $? -ne 0 ]; then
     # Create the bucket
-    aws s3api create-bucket --bucket "$BUCKET_NAME" --region "$AWS_REGION" --create-bucket-configuration LocationConstraint="$AWS_REGION"
+    aws s3api create-bucket --bucket "$BUCKET_NAME" --region "$AWS_REGION" 
 
     if [ $? -eq 0 ]; then
       echo "Bucket '$BUCKET_NAME' created successfully."
