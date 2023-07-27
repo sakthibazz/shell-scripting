@@ -54,7 +54,7 @@ aws iam attach-role-policy --role-name "$role_name" --policy-arn arn:aws:iam::aw
 
 # Create the S3 bucket and capture the output in a variable
 for ((i=1; i<=1000; i++)); do
-  BUCKET_NAME="sakthidevops$i"
+  BUCKET_NAME="sakthinewdevops$i"
 
   # Check if the bucket already exists
   aws s3api head-bucket --bucket "$BUCKET_NAME" --region "$AWS_REGION" 2>/dev/null
