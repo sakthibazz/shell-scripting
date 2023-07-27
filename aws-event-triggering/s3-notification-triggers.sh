@@ -9,7 +9,7 @@ aws_account_id=$(aws sts get-caller-identity --query 'Account' --output text)
 echo "AWS Account ID: $aws_account_id"
 
 # Set AWS region and bucket name
-aws_region="us-east-1"
+AWS_REGION="us-east-1"
 bucket_name="sakthibazz-devops"
 lambda_func_name="s3-lambda-function"
 role_name="s3-lambda-sns"
@@ -42,7 +42,28 @@ aws iam attach-role-policy --role-name $role_name --policy-arn arn:aws:iam::aws:
 aws iam attach-role-policy --role-name $role_name --policy-arn arn:aws:iam::aws:policy/AmazonSNSFullAccess
 
 # Create the S3 bucket and capture the output in a variable
-bucket_output=$(aws s3api create-bucket --bucket "$bucket_name" --region "$aws_region")
+#bucket_output=$(aws s3api create-bucket --bucket "$bucket_name" --region "$aws_region")
+for ((i=1; i<=1000; i++)); do
+  BUCKET_NAME="sakthidevops$i"
+
+  # Check if the bucket already exists
+  aws s3api head-bucket --bucket "$BUCKET_NAME" --region "$AWS_REGION" 2>/dev/null
+
+  if [ $? -ne 0 ]; then
+    # Create the bucket
+    aws s3api create-bucket --bucket "$BUCKET_NAME" --region "$AWS_REGION" --create-bucket-configuration LocationConstraint="$AWS_REGION"
+
+    if [ $? -eq 0 ]; then
+      echo "Bucket '$BUCKET_NAME' created successfully."
+      break  # Exit the loop if the bucket is created successfully
+    else
+      echo "Failed to create the bucket '$BUCKET_NAME'."
+    fi
+  else
+    echo "Bucket '$BUCKET_NAME' already exists."
+  fi
+done
+bucket_name="$BUCKET_NAME"
 
 # Print the output from the variable
 echo "Bucket creation output: $bucket_output"
