@@ -2,12 +2,6 @@
 
 set -x
 
-# Function to create an SNS topic
-create_sns_topic() {
-  local topic_name=$1
-  aws sns create-topic --name "$topic_name" --output json | jq -r '.TopicArn'
-}
-
 # Store the AWS account ID in a variable
 aws_account_id=$(aws sts get-caller-identity --query 'Account' --output text)
 
@@ -20,7 +14,13 @@ lambda_func_name="s3-lambda-function"
 role_name="s3-lambda-sns"
 email_address="sakthibazz@gmail.com"
 
-# Check if the IAM role already exists
+# Function to create an SNS topic
+function create_sns_topic() {
+  local topic_name=$1
+  aws sns create-topic --name "$topic_name" --output json | jq -r '.TopicArn'
+}
+
+# Checking if the IAM role already exists
 if aws iam get-role --role-name "$role_name" 2>/dev/null; then
   # Detach policies from the IAM role
   aws iam list-attached-role-policies --role-name "$role_name" | jq -r '.AttachedPolicies | .[].PolicyArn' | while read policy_arn; do
@@ -62,18 +62,17 @@ for ((i=1; i<=1000; i++)); do
   BUCKET_NAME="sakthinewdevops$i"
 
   # Check if the bucket already exists
-  if ! aws s3api head-bucket --bucket "$BUCKET_NAME" --region "$AWS_REGION" 2>/dev/null; then
+  if aws s3api head-bucket --bucket "$BUCKET_NAME" --region "$AWS_REGION" 2>/dev/null; then
+    echo "Bucket '$BUCKET_NAME' already exists."
+  else
     # Create the bucket
     aws s3api create-bucket --bucket "$BUCKET_NAME" --region "$AWS_REGION" 
-
     if [ $? -eq 0 ]; then
       echo "Bucket '$BUCKET_NAME' created successfully."
       break  # Exit the loop if the bucket is created successfully
     else
       echo "Failed to create the bucket '$BUCKET_NAME'."
     fi
-  else
-    echo "Bucket '$BUCKET_NAME' already exists."
   fi
 done
 
@@ -86,27 +85,32 @@ aws s3 cp ./example_file.txt "s3://$BUCKET_NAME/example_file.txt"
 # Create a Zip file to upload Lambda Function
 zip -r s3-lambda-function.zip ./s3-lambda-function
 
-# Wait for IAM role to propagate
-echo "Waiting for IAM role to propagate..."
-sleep 60
+# Create a Lambda function
+aws lambda create-function \
+  --region "$AWS_REGION" \
+  --function-name "$lambda_func_name" \
+  --runtime "python3.8" \
+  --handler "s3-lambda-function/s3-lambda-function.lambda_handler" \
+  --memory-size 128 \
+  --timeout 30 \
+  --role "$role_arn" \
+  --zip-file "fileb://./s3-lambda-function.zip"
 
-# Check if SNS topic already exists
+# Create an SNS topic or get the ARN of an existing one
 existing_topic_arn=$(aws sns list-topics --output json | jq -r '.Topics[] | select(.TopicArn | contains(":s3-lambda-sns")) | .TopicArn')
-
 if [ -n "$existing_topic_arn" ]; then
-  echo "SNS topic already exists. Deleting it..."
-  aws sns delete-topic --topic-arn "$existing_topic_arn" || { echo "Failed to delete existing SNS topic."; exit 1; }
+  topic_arn="$existing_topic_arn"
+  echo "SNS Topic already exists: $topic_arn"
+else
+  topic_arn=$(create_sns_topic "s3-lambda-sns")
+  echo "SNS Topic ARN: $topic_arn"
 fi
 
-# Create a new SNS topic
-topic_arn=$(create_sns_topic "s3-lambda-sns")
-
-# Print the TopicArn
-echo "SNS Topic ARN: $topic_arn"
-
-# Add SNS publish permission to the Lambda Function (if not already added)
+# Add SNS publish permission to the Lambda Function
 permission_statement_id="sns-publish"
-if ! aws lambda get-policy --function-name "$lambda_func_name" | jq -r --arg sid "$permission_statement_id" '.Policy | fromjson | .Statement[]? | select(.Sid == $sid) | .Sid' | grep -q "$permission_statement_id"; then
+if aws lambda get-policy --function-name "$lambda_func_name" | jq -r --arg sid "$permission_statement_id" '.Policy | fromjson | .Statement[]? | select(.Sid == $sid) | .Sid' | grep -q "$permission_statement_id"; then
+  echo "Permission '$permission_statement_id' already exists for Lambda function."
+else
   aws lambda add-permission \
     --function-name "$lambda_func_name" \
     --statement-id "$permission_statement_id" \
@@ -119,45 +123,10 @@ fi
 aws sns subscribe \
   --topic-arn "$topic_arn" \
   --protocol "lambda" \
-  --notification-endpoint "arn:aws:lambda:$AWS_REGION:$aws_account_id:function:$lambda_func_name"
+  --notification-endpoint "$LambdaFunctionArn"
 
 # Publish to the SNS topic
 aws sns publish \
   --topic-arn "$topic_arn" \
   --subject "A new object created in S3 bucket" \
   --message "Hello from Abhishek.Veeramalla YouTube channel, Learn DevOps Zero to Hero for Free"
-
-# Create a Lambda function (if not already created)
-if ! aws lambda get-function --function-name "$lambda_func_name" &>/dev/null; then
-  aws lambda create-function \
-    --region "$AWS_REGION" \
-    --function-name "$lambda_func_name" \
-    --runtime "python3.8" \
-    --handler "s3-lambda-function/s3-lambda-function.lambda_handler" \
-    --memory-size 128 \
-    --timeout 30 \
-    --role "arn:aws:iam::$aws_account_id:role/$role_name" \
-    --zip-file "fileb://./s3-lambda-function.zip"
-fi
-
-# Add Permissions to S3 Bucket to invoke Lambda (if not already added)
-permission_statement_id="s3-lambda-sns"
-if ! aws lambda get-policy --function-name "$lambda_func_name" | jq -r --arg sid "$permission_statement_id" '.Policy | fromjson | .Statement[]? | select(.Sid == $sid) | .Sid' | grep -q "$permission_statement_id"; then
-  aws lambda add-permission \
-    --function-name "$lambda_func_name" \
-    --statement-id "$permission_statement_id" \
-    --action "lambda:InvokeFunction" \
-    --principal s3.amazonaws.com \
-    --source-arn "arn:aws:s3:::$BUCKET_NAME"
-fi
-
-# Create an S3 event trigger for the Lambda function
-aws s3api put-bucket-notification-configuration \
-  --region "$AWS_REGION" \
-  --bucket "$BUCKET_NAME" \
-  --notification-configuration '{
-    "LambdaFunctionConfigurations": [{
-        "LambdaFunctionArn": "'"$LambdaFunctionArn"'",
-        "Events": ["s3:ObjectCreated:*"]
-    }]
-}'
