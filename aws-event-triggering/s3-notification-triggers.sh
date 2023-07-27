@@ -14,11 +14,13 @@ lambda_func_name="s3-lambda-function"
 role_name="s3-lambda-sns"
 email_address="sakthibazz@gmail.com"
 
-# Create IAM Role for the project
+# Checking the IAM role already exists
 aws iam get-role --role-name "$role_name" 2>/dev/null
 if [ $? eq 0 ]; then
+  #deleting the IAM role if exists
   aws iam delete-role --role-name $role_name
 else
+  #creating the IAM role
   role_response=$(aws iam create-role --role-name s3-lambda-sns --assume-role-policy-document '{
     "Version": "2012-10-17",
     "Statement": [{
