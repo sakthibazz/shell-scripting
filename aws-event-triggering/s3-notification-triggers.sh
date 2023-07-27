@@ -53,7 +53,7 @@ aws iam attach-role-policy --role-name "$role_name" --policy-arn arn:aws:iam::aw
 aws iam attach-role-policy --role-name "$role_name" --policy-arn arn:aws:iam::aws:policy/AmazonSNSFullAccess
 
 # Create the S3 bucket and capture the output in a variable
-for ((i=3; i<=1000; i++)); do
+for ((i=1; i<=1000; i++)); do
   BUCKET_NAME="sakthinewdevops$i"
 
   # Check if the bucket already exists
