@@ -14,12 +14,6 @@ lambda_func_name="s3-lambda-function"
 role_name="s3-lambda-sns"
 email_address="sakthibazz@gmail.com"
 
-# Function to create an SNS topic
-function create_sns_topic() {
-  local topic_name=$1
-  aws sns create-topic --name "$topic_name" --output json | jq -r '.TopicArn'
-}
-
 # Checking if the IAM role already exists
 if aws iam get-role --role-name "$role_name" 2>/dev/null; then
   # Detach policies from the IAM role
@@ -62,29 +56,32 @@ for ((i=1; i<=1000; i++)); do
   BUCKET_NAME="sakthinewdevops$i"
 
   # Check if the bucket already exists
-  if aws s3api head-bucket --bucket "$BUCKET_NAME" --region "$AWS_REGION" 2>/dev/null; then
-    echo "Bucket '$BUCKET_NAME' already exists."
-  else
+  if ! aws s3api head-bucket --bucket "$BUCKET_NAME" --region "$AWS_REGION" 2>/dev/null; then
     # Create the bucket
     aws s3api create-bucket --bucket "$BUCKET_NAME" --region "$AWS_REGION" 
+
     if [ $? -eq 0 ]; then
       echo "Bucket '$BUCKET_NAME' created successfully."
       break  # Exit the loop if the bucket is created successfully
     else
       echo "Failed to create the bucket '$BUCKET_NAME'."
     fi
+  else
+    echo "Bucket '$BUCKET_NAME' already exists."
   fi
 done
+bucket_name="$BUCKET_NAME"
 
 # Print the output from the variable
-echo "Bucket creation output: $BUCKET_NAME"
+echo "Bucket creation output: $bucket_output"
 
 # Upload a file to the bucket
-aws s3 cp ./example_file.txt "s3://$BUCKET_NAME/example_file.txt"
+aws s3 cp ./example_file.txt "s3://$bucket_name/example_file.txt"
 
 # Create a Zip file to upload Lambda Function
 zip -r s3-lambda-function.zip ./s3-lambda-function
 
+sleep 5
 # Create a Lambda function
 aws lambda create-function \
   --region "$AWS_REGION" \
@@ -93,31 +90,42 @@ aws lambda create-function \
   --handler "s3-lambda-function/s3-lambda-function.lambda_handler" \
   --memory-size 128 \
   --timeout 30 \
-  --role "$role_arn" \
+  --role "arn:aws:iam::$aws_account_id:role/$role_name" \
   --zip-file "fileb://./s3-lambda-function.zip"
 
-# Create an SNS topic or get the ARN of an existing one
-existing_topic_arn=$(aws sns list-topics --output json | jq -r '.Topics[] | select(.TopicArn | contains(":s3-lambda-sns")) | .TopicArn')
-if [ -n "$existing_topic_arn" ]; then
-  topic_arn="$existing_topic_arn"
-  echo "SNS Topic already exists: $topic_arn"
-else
-  topic_arn=$(create_sns_topic "s3-lambda-sns")
-  echo "SNS Topic ARN: $topic_arn"
-fi
+# Add Permissions to S3 Bucket to invoke Lambda
+aws lambda add-permission \
+  --function-name "$lambda_func_name" \
+  --statement-id "s3-lambda-sns" \
+  --action "lambda:InvokeFunction" \
+  --principal s3.amazonaws.com \
+  --source-arn "arn:aws:s3:::$bucket_name"
+
+# Create an S3 event trigger for the Lambda function
+LambdaFunctionArn="arn:aws:lambda:$AWS_REGION:$aws_account_id:function:$lambda_func_name"
+aws s3api put-bucket-notification-configuration \
+  --region "$AWS_REGION" \
+  --bucket "$bucket_name" \
+  --notification-configuration '{
+    "LambdaFunctionConfigurations": [{
+        "LambdaFunctionArn": "'"$LambdaFunctionArn"'",
+        "Events": ["s3:ObjectCreated:*"]
+    }]
+}'
+
+# Create an SNS topic and save the topic ARN to a variable
+topic_arn=$(aws sns create-topic --name s3-lambda-sns --output json | jq -r '.TopicArn')
+
+# Print the TopicArn
+echo "SNS Topic ARN: $topic_arn"
 
 # Add SNS publish permission to the Lambda Function
-permission_statement_id="sns-publish"
-if aws lambda get-policy --function-name "$lambda_func_name" | jq -r --arg sid "$permission_statement_id" '.Policy | fromjson | .Statement[]? | select(.Sid == $sid) | .Sid' | grep -q "$permission_statement_id"; then
-  echo "Permission '$permission_statement_id' already exists for Lambda function."
-else
-  aws lambda add-permission \
-    --function-name "$lambda_func_name" \
-    --statement-id "$permission_statement_id" \
-    --action "lambda:InvokeFunction" \
-    --principal sns.amazonaws.com \
-    --source-arn "$topic_arn"
-fi
+aws lambda add-permission \
+  --function-name "$lambda_func_name" \
+  --statement-id "sns-publish" \
+  --action "lambda:InvokeFunction" \
+  --principal sns.amazonaws.com \
+  --source-arn "$topic_arn"
 
 # Subscribe Lambda function to the SNS topic
 aws sns subscribe \
