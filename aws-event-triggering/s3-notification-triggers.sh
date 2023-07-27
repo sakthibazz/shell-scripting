@@ -20,7 +20,7 @@ lambda_func_name="s3-lambda-function"
 role_name="s3-lambda-sns"
 email_address="sakthibazz@gmail.com"
 
-# Checking if the IAM role already exists
+# Check if the IAM role already exists
 if aws iam get-role --role-name "$role_name" 2>/dev/null; then
   # Detach policies from the IAM role
   aws iam list-attached-role-policies --role-name "$role_name" | jq -r '.AttachedPolicies | .[].PolicyArn' | while read policy_arn; do
@@ -62,9 +62,7 @@ for ((i=1; i<=1000; i++)); do
   BUCKET_NAME="sakthinewdevops$i"
 
   # Check if the bucket already exists
-  aws s3api head-bucket --bucket "$BUCKET_NAME" --region "$AWS_REGION" 2>/dev/null
-
-  if [ $? -ne 0 ]; then
+  if ! aws s3api head-bucket --bucket "$BUCKET_NAME" --region "$AWS_REGION" 2>/dev/null; then
     # Create the bucket
     aws s3api create-bucket --bucket "$BUCKET_NAME" --region "$AWS_REGION" 
 
@@ -90,7 +88,7 @@ zip -r s3-lambda-function.zip ./s3-lambda-function
 
 # Wait for IAM role to propagate
 echo "Waiting for IAM role to propagate..."
-sleep 10
+sleep 60
 
 # Check if SNS topic already exists
 existing_topic_arn=$(aws sns list-topics --output json | jq -r '.Topics[] | select(.TopicArn | contains(":s3-lambda-sns")) | .TopicArn')
@@ -106,13 +104,16 @@ topic_arn=$(create_sns_topic "s3-lambda-sns")
 # Print the TopicArn
 echo "SNS Topic ARN: $topic_arn"
 
-# Add SNS publish permission to the Lambda Function
-aws lambda add-permission \
-  --function-name "$lambda_func_name" \
-  --statement-id "sns-publish" \
-  --action "lambda:InvokeFunction" \
-  --principal sns.amazonaws.com \
-  --source-arn "$topic_arn"
+# Add SNS publish permission to the Lambda Function (if not already added)
+permission_statement_id="sns-publish"
+if ! aws lambda get-policy --function-name "$lambda_func_name" | jq -r --arg sid "$permission_statement_id" '.Policy | fromjson | .Statement[]? | select(.Sid == $sid) | .Sid' | grep -q "$permission_statement_id"; then
+  aws lambda add-permission \
+    --function-name "$lambda_func_name" \
+    --statement-id "$permission_statement_id" \
+    --action "lambda:InvokeFunction" \
+    --principal sns.amazonaws.com \
+    --source-arn "$topic_arn"
+fi
 
 # Subscribe Lambda function to the SNS topic
 aws sns subscribe \
@@ -126,25 +127,29 @@ aws sns publish \
   --subject "A new object created in S3 bucket" \
   --message "Hello from Abhishek.Veeramalla YouTube channel, Learn DevOps Zero to Hero for Free"
 
-# Create a Lambda function
-aws lambda create-function \
-  --region "$AWS_REGION" \
-  --function-name "$lambda_func_name" \
-  --runtime "python3.8" \
-  --handler "s3-lambda-function/s3-lambda-function.lambda_handler" \
-  --memory-size 128 \
-  --timeout 30 \
-  --role "arn:aws:iam::$aws_account_id:role/$role_name" \
-  --zip-file "fileb://./s3-lambda-function.zip"
+# Create a Lambda function (if not already created)
+if ! aws lambda get-function --function-name "$lambda_func_name" &>/dev/null; then
+  aws lambda create-function \
+    --region "$AWS_REGION" \
+    --function-name "$lambda_func_name" \
+    --runtime "python3.8" \
+    --handler "s3-lambda-function/s3-lambda-function.lambda_handler" \
+    --memory-size 128 \
+    --timeout 30 \
+    --role "arn:aws:iam::$aws_account_id:role/$role_name" \
+    --zip-file "fileb://./s3-lambda-function.zip"
+fi
 
-# Add Permissions to S3 Bucket to invoke Lambda
-LambdaFunctionArn="arn:aws:lambda:$AWS_REGION:$aws_account_id:function:$lambda_func_name"
-aws lambda add-permission \
-  --function-name "$lambda_func_name" \
-  --statement-id "s3-lambda-sns" \
-  --action "lambda:InvokeFunction" \
-  --principal s3.amazonaws.com \
-  --source-arn "arn:aws:s3:::$BUCKET_NAME"
+# Add Permissions to S3 Bucket to invoke Lambda (if not already added)
+permission_statement_id="s3-lambda-sns"
+if ! aws lambda get-policy --function-name "$lambda_func_name" | jq -r --arg sid "$permission_statement_id" '.Policy | fromjson | .Statement[]? | select(.Sid == $sid) | .Sid' | grep -q "$permission_statement_id"; then
+  aws lambda add-permission \
+    --function-name "$lambda_func_name" \
+    --statement-id "$permission_statement_id" \
+    --action "lambda:InvokeFunction" \
+    --principal s3.amazonaws.com \
+    --source-arn "arn:aws:s3:::$BUCKET_NAME"
+fi
 
 # Create an S3 event trigger for the Lambda function
 aws s3api put-bucket-notification-configuration \
