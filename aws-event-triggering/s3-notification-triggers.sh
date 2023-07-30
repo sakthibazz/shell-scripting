@@ -14,6 +14,7 @@ lambda_func_name="s3-lambda-function-new"
 role_name="s3-lambda-sns-new"
 email_address="sakthiglmech123@gmail.com"
 
+
 # Checking if the IAM role already exists
 if aws iam get-role --role-name "$role_name" 2>/dev/null; then
   # Detach policies from the IAM role
