@@ -10,9 +10,9 @@ echo "AWS Account ID: $aws_account_id"
 
 # Set AWS region and bucket name
 AWS_REGION="us-east-1"
-lambda_func_name="s3-lambda-function"
-role_name="s3-lambda-sns"
-email_address="sakthibazz@gmail.com"
+lambda_func_name="s3-lambda-function-new"
+role_name="s3-lambda-sns-new"
+email_address="sakthiglmech123@gmail.com"
 
 # Checking if the IAM role already exists
 if aws iam get-role --role-name "$role_name" 2>/dev/null; then
@@ -73,7 +73,7 @@ done
 bucket_name="$BUCKET_NAME"
 
 # Print the output from the variable
-echo "Bucket creation output: $bucket_output"
+echo "Bucket creation output: $bucket_name"
 
 # Upload a file to the bucket
 aws s3 cp ./example_file.txt "s3://$bucket_name/example_file.txt"
@@ -81,7 +81,7 @@ aws s3 cp ./example_file.txt "s3://$bucket_name/example_file.txt"
 # Create a Zip file to upload Lambda Function
 zip -r s3-lambda-function.zip ./s3-lambda-function
 
-sleep 5
+sleep 10
 # Create a Lambda function
 aws lambda create-function \
   --region "$AWS_REGION" \
@@ -114,7 +114,7 @@ aws s3api put-bucket-notification-configuration \
 }'
 
 # Create an SNS topic and save the topic ARN to a variable
-topic_arn=$(aws sns create-topic --name s3-lambda-sns --output json | jq -r '.TopicArn')
+topic_arn=$(aws sns create-topic --name s3-lambda-sns-new --output json | jq -r '.TopicArn')
 
 # Print the TopicArn
 echo "SNS Topic ARN: $topic_arn"
