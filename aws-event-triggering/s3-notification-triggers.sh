@@ -10,8 +10,8 @@ echo "AWS Account ID: $aws_account_id"
 
 # Set AWS region and bucket name
 AWS_REGION="us-east-1"
-lambda_func_name="s3-lambda-function-new"
-role_name="s3-lambda-sns-new"
+lambda_func_name="s3-lambda-function"
+role_name="s3-lambda-sns"
 email_address="sakthiglmech123@gmail.com"
 
 
@@ -77,7 +77,7 @@ bucket_name="$BUCKET_NAME"
 echo "Bucket creation output: $bucket_name"
 
 # Upload a file to the bucket
-aws s3 cp ./example_file.txt "s3://$bucket_name/example_file.txt"
+aws s3 cp ./example_file.txt s3://$bucket_name/example_file.txt
 
 # Create a Zip file to upload Lambda Function
 zip -r s3-lambda-function.zip ./s3-lambda-function
@@ -115,7 +115,7 @@ aws s3api put-bucket-notification-configuration \
 }'
 
 # Create an SNS topic and save the topic ARN to a variable
-topic_arn=$(aws sns create-topic --name s3-lambda-sns-new --output json | jq -r '.TopicArn')
+topic_arn=$(aws sns create-topic --name s3-lambda-sns --output json | jq -r '.TopicArn')
 
 # Print the TopicArn
 echo "SNS Topic ARN: $topic_arn"
@@ -123,19 +123,19 @@ echo "SNS Topic ARN: $topic_arn"
 # Add SNS publish permission to the Lambda Function
 aws lambda add-permission \
   --function-name "$lambda_func_name" \
-  --statement-id "sns-publish" \
+  --statement-id "s3-lambda-sns" \
   --action "lambda:InvokeFunction" \
   --principal sns.amazonaws.com \
-  --source-arn "$topic_arn"
+  --source-arn "$arn:aws:s3:::$bucket_name"
 
 # Subscribe Lambda function to the SNS topic
 aws sns subscribe \
   --topic-arn "$topic_arn" \
-  --protocol "lambda" \
-  --notification-endpoint "$LambdaFunctionArn"
+  --protocol email \
+  --notification-endpoint "$email_address"
 
 # Publish to the SNS topic
 aws sns publish \
   --topic-arn "$topic_arn" \
-  --subject "A new object created in S3 bucket" \
+  --subject "some changes happened in s3 bucket, Maybe a new object created in S3 bucket" \
   --message "Hello from Abhishek.Veeramalla YouTube channel, Learn DevOps Zero to Hero for Free"
