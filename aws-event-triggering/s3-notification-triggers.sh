@@ -126,7 +126,7 @@ aws lambda add-permission \
   --statement-id "s3-lambda-sns" \
   --action "lambda:InvokeFunction" \
   --principal sns.amazonaws.com \
-  --source-arn "$arn:aws:s3:::$bucket_name"
+  --source-arn "arn:aws:s3:::$bucket_name"
 
 # Subscribe Lambda function to the SNS topic
 aws sns subscribe \
